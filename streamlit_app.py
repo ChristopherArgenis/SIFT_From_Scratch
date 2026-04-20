@@ -237,5 +237,5 @@ if mode == "Live Demo Webcam":
 
         st.image(
             cv2.cvtColor(vis, cv2.COLOR_BGR2RGB),
-            caption=f"KP: {result['count']} | Time: {result['time']:.4f}s\"
+            caption=f"KP: {result['count']} | Time: {result['time']:.4f}s"
         )
