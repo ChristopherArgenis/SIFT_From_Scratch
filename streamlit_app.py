@@ -224,21 +224,18 @@ class VideoProcessor(VideoTransformerBase):
 
 if mode == "Live Demo Webcam":
     st.header("Live Demo Webcam")
-    st.write("Webcam usando streamlit-webrtc (correcto para deploy en Streamlit Cloud)")
+    st.write("Captura desde cámara del navegador")
 
-    webrtc_streamer(
-    key="sift-live-demo",
-    video_processor_factory=VideoProcessor,
-    media_stream_constraints={
-        "video": True,
-        "audio": False,
-    },
-    rtc_configuration={
-        "iceServers": [
-            {"urls": ["stun:stun.l.google.com:19302"]},
-            {"urls": ["stun:stun1.l.google.com:19302"]},
-            {"urls": ["stun:stun2.l.google.com:19302"]},
-        ]
-    },
-    async_processing=True,
-)
+    picture = st.camera_input("Toma una foto")
+
+    if picture is not None:
+        file_bytes = np.asarray(bytearray(picture.read()), dtype=np.uint8)
+        frame = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+
+        result = detector.process(frame)
+        vis = draw_keypoints(frame, result["keypoints"])
+
+        st.image(
+            cv2.cvtColor(vis, cv2.COLOR_BGR2RGB),
+            caption=f\"KP: {result['count']} | Time: {result['time']:.4f}s\"
+        )
