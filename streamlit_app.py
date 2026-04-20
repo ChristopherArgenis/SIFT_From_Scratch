@@ -161,5 +161,3 @@ if mode == "Live Demo Webcam":
 
         async_processing=True,
     )
-        async_processing=True,
-    )
