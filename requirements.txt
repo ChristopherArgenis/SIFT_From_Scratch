@@ -1,1 +1,8 @@
 streamlit
+opencv-python==4.11.0.86
+numpy==2.2.4
+pandas==2.2.3
+matplotlib==3.10.1
+scipy==1.15.2
+scikit-image==0.25.2
+Pillow==11.1.0
