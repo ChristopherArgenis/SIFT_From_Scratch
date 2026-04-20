@@ -94,6 +94,7 @@ def draw_keypoints(image, keypoints):
 st.title("Implementación From Scratch + Live Demo")
 st.subheader("SIFT inspirado en DoG + Webcam en tiempo real")
 
+st.sidebar.header("Configuración")
 mode = st.sidebar.radio(
     "Selecciona modo:",
     [
@@ -102,8 +103,16 @@ mode = st.sidebar.radio(
     ],
 )
 
+sigma1 = st.sidebar.slider("Sigma 1", 0.5, 5.0, 1.0, 0.1)
+sigma2 = st.sidebar.slider("Sigma 2", 0.5, 6.0, 2.0, 0.1)
+threshold = st.sidebar.slider("Threshold", 0.001, 0.1, 0.03, 0.001)
 
-detector = SimpleDoGDetector()
+
+detector = SimpleDoGDetector(
+    sigma1=sigma1,
+    sigma2=sigma2,
+    threshold=threshold,
+)
 
 
 # =====================================================
@@ -124,6 +133,10 @@ if mode == "Evaluación de imágenes":
         for file in uploaded_files:
             file_bytes = np.asarray(bytearray(file.read()), dtype=np.uint8)
             image = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+
+            if image is None:
+                st.warning(f"No se pudo leer: {file.name}")
+                continue
 
             result = detector.process(image)
             vis = draw_keypoints(image, result["keypoints"])
@@ -149,8 +162,17 @@ if mode == "Evaluación de imágenes":
 
     if results:
         df = pd.DataFrame(results)
+
         st.header("Tabla resumen")
         st.dataframe(df, use_container_width=True)
+
+        csv = df.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            label="Descargar resultados CSV",
+            data=csv,
+            file_name="resultados_sift.csv",
+            mime="text/csv",
+        )
 
         st.header("Gráficas")
 
@@ -174,36 +196,43 @@ if mode == "Live Demo Webcam":
     st.header("Live Demo Webcam")
     st.write("OpenCV se usa únicamente para captura de webcam.")
 
-    run = st.checkbox("Activar cámara")
+    start_camera = st.button("Iniciar cámara")
+    stop_camera = st.button("Detener cámara")
+
     FRAME_WINDOW = st.image([])
 
-    cap = None
-
-    if run:
+    if start_camera and not stop_camera:
         cap = cv2.VideoCapture(0)
 
-        while run:
-            ret, frame = cap.read()
-            if not ret:
-                st.warning("No se pudo acceder a la cámara.")
-                break
+        if not cap.isOpened():
+            st.error("No se pudo abrir la cámara.")
+        else:
+            for _ in range(300):
+                ret, frame = cap.read()
 
-            result = detector.process(frame)
-            vis = draw_keypoints(frame, result["keypoints"])
+                if not ret:
+                    st.warning("No se pudo capturar frame.")
+                    break
 
-            cv2.putText(
-                vis,
-                f"KP: {result['count']} | Time: {result['time']:.3f}s",
-                (20, 40),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.8,
-                (0, 255, 0),
-                2,
-            )
+                result = detector.process(frame)
+                vis = draw_keypoints(frame, result["keypoints"])
 
-            FRAME_WINDOW.image(
-                cv2.cvtColor(vis, cv2.COLOR_BGR2RGB)
-            )
+                cv2.putText(
+                    vis,
+                    f"KP: {result['count']} | Time: {result['time']:.3f}s",
+                    (20, 40),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.8,
+                    (0, 255, 0),
+                    2,
+                )
+
+                FRAME_WINDOW.image(
+                    cv2.cvtColor(vis, cv2.COLOR_BGR2RGB)
+                )
+
+            cap.release()
+            st.success("Cámara finalizada.")
 
         if cap is not None:
             cap.release()
