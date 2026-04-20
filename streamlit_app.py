@@ -250,67 +250,32 @@ if mode == "Evaluación de imágenes":
 
 
 # =====================================================
-# CLASE PARA WEBCAM EN VIVO
-# =====================================================
-class VideoProcessor(VideoProcessorBase):
-    def __init__(self):
-        self.detector = SimpleDoGDetector(
-            sigma1=1.0,
-            sigma2=2.0,
-            threshold=0.08,
-            min_distance=12,
-            max_keypoints=150,
-        )
-
-    def recv(self, frame):
-        img = frame.to_ndarray(format="bgr24")
-
-        # Reducir resolución para estabilidad
-        img = cv2.resize(img, (480, 360))
-
-        result = self.detector.process(img)
-        vis = draw_keypoints(img, result["keypoints"])
-
-        cv2.putText(
-            vis,
-            f"KP: {result['count']} | Time: {result['time']:.3f}s",
-            (20, 40),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.7,
-            (0, 255, 0),
-            2,
-        )
-
-        return av.VideoFrame.from_ndarray(
-            vis,
-            format="bgr24"
-        )
-
-
-# =====================================================
-# MODO 2 — LIVE DEMO WEBCAM
+# MODO 2 — LIVE DEMO WEBCAM (CAPTURA DE FOTO)
 # =====================================================
 if mode == "Live Demo Webcam":
     st.header("Live Demo Webcam")
-    st.write("Detección de keypoints en tiempo real")
+    st.write("Captura desde la cámara del navegador")
 
     st.info(
-        "Versión optimizada para estabilidad en Streamlit Cloud."
+        "Versión estable para Streamlit Cloud usando st.camera_input()."
     )
 
-    webrtc_streamer(
-        key="live-demo",
-        video_processor_factory=VideoProcessor,
-        media_stream_constraints={
-            "video": True,
-            "audio": False,
-        },
-        rtc_configuration={
-            "iceServers": [
-                {"urls": ["stun:stun.l.google.com:19302"]},
-                {"urls": ["stun:stun1.l.google.com:19302"]},
-                {"urls": ["stun:stun2.l.google.com:19302"]},
-            ]
-        },
-        async_processing=True,
-    )
+    picture = st.camera_input("Toma una foto")
+
+    if picture is not None:
+        file_bytes = np.asarray(bytearray(picture.read()), dtype=np.uint8)
+        frame = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+
+        if frame is not None:
+            result = detector.process(frame)
+            vis = draw_keypoints(frame, result["keypoints"])
+
+            st.image(
+                cv2.cvtColor(vis, cv2.COLOR_BGR2RGB),
+                caption=f"KP: {result['count']} | Time: {result['time']:.4f}s"
+            )
+
+            st.write(f"Tiempo de procesamiento: {result['time']:.4f} s")
+            st.write(f"Número de keypoints detectados: {result['count']}")
+        else:
+            st.warning("No se pudo procesar la imagen capturada.")
