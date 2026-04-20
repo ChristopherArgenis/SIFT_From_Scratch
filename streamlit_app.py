@@ -1,38 +1,45 @@
 import streamlit as st
-from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
-import av
 import cv2
 import numpy as np
 import pandas as pd
 import time
 import matplotlib.pyplot as plt
-from skimage.feature import peak_local_max
 from scipy.ndimage import gaussian_filter
-from PIL import Image
+from skimage.feature import peak_local_max
+from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
+import av
 
 
 # =====================================================
 # CONFIG
 # =====================================================
-st.set_page_config(page_title="SIFT From Scratch + Live Demo", layout="wide")
+st.set_page_config(
+    page_title="SIFT From Scratch + Live Demo",
+    layout="wide"
+)
+
 
 # =====================================================
-# DETECTOR OPTIMIZADO PARA LIVE DEMO (FAST VERSION)
+# DETECTOR OPTIMIZADO (DoG simplificado)
 # =====================================================
-
 class SimpleDoGDetector:
     """
-    Versión optimizada para Streamlit Live Demo.
-    Prioriza fluidez sobre precisión extrema.
+    Detector inspirado en SIFT usando Difference of Gaussians.
+
+    Reglas:
+    - NO usa cv2 para DoG
+    - Usa NumPy + SciPy
+    - Optimizado para Streamlit Live Demo
+    - OpenCV solo para captura / dibujo / conversión
     """
 
     def __init__(
         self,
         sigma1=1.0,
         sigma2=2.0,
-        threshold=0.08,   # más agresivo
-        min_distance=12,  # menos puntos cercanos
-        max_keypoints=150 # límite de keypoints
+        threshold=0.08,
+        min_distance=12,
+        max_keypoints=150,
     ):
         self.sigma1 = sigma1
         self.sigma2 = sigma2
@@ -84,13 +91,167 @@ class SimpleDoGDetector:
 
 
 # =====================================================
-# LIVE DEMO WEBCAM OPTIMIZADO (streamlit-webrtc)
+# DIBUJAR KEYPOINTS
 # =====================================================
+def draw_keypoints(image, keypoints):
+    output = image.copy()
 
-from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
-import av
+    if len(output.shape) == 2:
+        output = cv2.cvtColor(output, cv2.COLOR_GRAY2BGR)
+
+    for y, x in keypoints:
+        cv2.circle(
+            output,
+            (int(x), int(y)),
+            3,
+            (0, 255, 0),
+            1,
+        )
+
+    return output
 
 
+# =====================================================
+# TITULO PRINCIPAL
+# =====================================================
+st.title("Implementación From Scratch + Live Demo")
+st.subheader("SIFT inspirado en DoG + Webcam en tiempo real")
+
+
+# =====================================================
+# SIDEBAR
+# =====================================================
+st.sidebar.header("Configuración")
+
+mode = st.sidebar.radio(
+    "Selecciona modo:",
+    [
+        "Evaluación de imágenes",
+        "Live Demo Webcam",
+    ],
+)
+
+sigma1 = st.sidebar.slider(
+    "Sigma 1",
+    min_value=0.5,
+    max_value=5.0,
+    value=1.0,
+    step=0.1,
+)
+
+sigma2 = st.sidebar.slider(
+    "Sigma 2",
+    min_value=0.5,
+    max_value=6.0,
+    value=2.0,
+    step=0.1,
+)
+
+threshold = st.sidebar.slider(
+    "Threshold",
+    min_value=0.001,
+    max_value=0.1,
+    value=0.08,
+    step=0.001,
+)
+
+
+# =====================================================
+# DETECTOR GLOBAL
+# =====================================================
+detector = SimpleDoGDetector(
+    sigma1=sigma1,
+    sigma2=sigma2,
+    threshold=threshold,
+)
+
+
+# =====================================================
+# MODO 1 — EVALUACIÓN DE IMÁGENES
+# =====================================================
+if mode == "Evaluación de imágenes":
+    st.header("Evaluación con imágenes")
+
+    uploaded_files = st.file_uploader(
+        "Sube imágenes (Lenna, Baboon, Cameraman, bebé, anciano, perro, gato, etc.)",
+        type=["png", "jpg", "jpeg"],
+        accept_multiple_files=True,
+    )
+
+    results = []
+
+    if uploaded_files:
+        for file in uploaded_files:
+            file_bytes = np.asarray(bytearray(file.read()), dtype=np.uint8)
+            image = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+
+            if image is None:
+                st.warning(f"No se pudo leer: {file.name}")
+                continue
+
+            result = detector.process(image)
+            vis = draw_keypoints(image, result["keypoints"])
+
+            st.subheader(file.name)
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                st.image(
+                    cv2.cvtColor(image, cv2.COLOR_BGR2RGB),
+                    caption="Imagen original",
+                )
+
+            with col2:
+                st.image(
+                    cv2.cvtColor(vis, cv2.COLOR_BGR2RGB),
+                    caption="Keypoints detectados",
+                )
+
+            st.write(f"Tiempo de procesamiento: {result['time']:.4f} s")
+            st.write(f"Número de keypoints: {result['count']}")
+
+            results.append(
+                {
+                    "Imagen": file.name,
+                    "Tiempo (s)": round(result["time"], 4),
+                    "Keypoints": result["count"],
+                }
+            )
+
+    if results:
+        df = pd.DataFrame(results)
+
+        st.header("Tabla resumen")
+        st.dataframe(df, use_container_width=True)
+
+        csv = df.to_csv(index=False).encode("utf-8")
+
+        st.download_button(
+            label="Descargar CSV",
+            data=csv,
+            file_name="resultados_sift.csv",
+            mime="text/csv",
+        )
+
+        st.header("Gráficas")
+
+        fig1, ax1 = plt.subplots()
+        ax1.bar(df["Imagen"], df["Tiempo (s)"])
+        ax1.set_title("Tiempo de procesamiento por imagen")
+        plt.xticks(rotation=45)
+        st.pyplot(fig1)
+
+        fig2, ax2 = plt.subplots()
+        ax2.bar(df["Imagen"], df["Keypoints"])
+        ax2.set_title("Número de keypoints detectados")
+        plt.xticks(rotation=45)
+        st.pyplot(fig2)
+
+
+# =====================================================
+# CLASE PARA WEBCAM EN VIVO
+# =====================================================
 class VideoProcessor(VideoProcessorBase):
     def __init__(self):
         self.detector = SimpleDoGDetector(
@@ -104,9 +265,7 @@ class VideoProcessor(VideoProcessorBase):
     def recv(self, frame):
         img = frame.to_ndarray(format="bgr24")
 
-        # =================================================
-        # REDUCCIÓN DE RESOLUCIÓN → MUCHÍSIMA MEJORA
-        # =================================================
+        # Reducir resolución para estabilidad
         img = cv2.resize(img, (480, 360))
 
         result = self.detector.process(img)
@@ -129,28 +288,23 @@ class VideoProcessor(VideoProcessorBase):
 
 
 # =====================================================
-# MODO 2: LIVE DEMO WEBCAM
+# MODO 2 — LIVE DEMO WEBCAM
 # =====================================================
-
 if mode == "Live Demo Webcam":
     st.header("Live Demo Webcam")
-    st.write("Detección de keypoints en tiempo real (versión optimizada)")
+    st.write("Detección de keypoints en tiempo real")
 
     st.info(
-        "Versión optimizada para estabilidad en Streamlit Cloud "
-        "y procesamiento en tiempo real."
+        "Versión optimizada para estabilidad en Streamlit Cloud."
     )
 
     webrtc_streamer(
         key="live-demo",
-
         video_processor_factory=VideoProcessor,
-
         media_stream_constraints={
             "video": True,
             "audio": False,
         },
-
         rtc_configuration={
             "iceServers": [
                 {"urls": ["stun:stun.l.google.com:19302"]},
@@ -158,6 +312,5 @@ if mode == "Live Demo Webcam":
                 {"urls": ["stun:stun2.l.google.com:19302"]},
             ]
         },
-
         async_processing=True,
     )
