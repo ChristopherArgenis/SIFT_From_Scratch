@@ -227,11 +227,16 @@ if mode == "Live Demo Webcam":
     st.write("Webcam usando streamlit-webrtc (correcto para deploy en Streamlit Cloud)")
 
     webrtc_streamer(
-        key="sift-live-demo",
-        video_processor_factory=VideoProcessor,
-        media_stream_constraints={
-            "video": True,
-            "audio": False,
-        },
-        async_processing=True,
-    )
+    key="sift-live-demo",
+    video_processor_factory=VideoProcessor,
+    media_stream_constraints={
+        "video": True,
+        "audio": False,
+    },
+    rtc_configuration={
+        "iceServers": [
+            {"urls": ["stun:stun.l.google.com:19302"]}
+        ]
+    },
+    async_processing=True,
+)
