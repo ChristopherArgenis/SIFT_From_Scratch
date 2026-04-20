@@ -1,4 +1,6 @@
 import streamlit as st
+from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
+import av
 import cv2
 import numpy as np
 import pandas as pd
@@ -190,49 +192,46 @@ if mode == "Evaluación de imágenes":
 
 
 # =====================================================
-# MODO 2: LIVE DEMO WEBCAM
+# MODO 2: LIVE DEMO WEBCAM (streamlit-webrtc)
 # =====================================================
+
+class VideoProcessor(VideoTransformerBase):
+    def __init__(self):
+        self.detector = SimpleDoGDetector(
+            sigma1=sigma1,
+            sigma2=sigma2,
+            threshold=threshold,
+        )
+
+    def transform(self, frame):
+        img = frame.to_ndarray(format="bgr24")
+
+        result = self.detector.process(img)
+        vis = draw_keypoints(img, result["keypoints"])
+
+        cv2.putText(
+            vis,
+            f"KP: {result['count']} | Time: {result['time']:.3f}s",
+            (20, 40),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.8,
+            (0, 255, 0),
+            2,
+        )
+
+        return av.VideoFrame.from_ndarray(vis, format="bgr24")
+
+
 if mode == "Live Demo Webcam":
     st.header("Live Demo Webcam")
-    st.write("OpenCV se usa únicamente para captura de webcam.")
+    st.write("Webcam usando streamlit-webrtc (correcto para deploy en Streamlit Cloud)")
 
-    start_camera = st.button("Iniciar cámara")
-    stop_camera = st.button("Detener cámara")
-
-    FRAME_WINDOW = st.image([])
-
-    if start_camera and not stop_camera:
-        cap = cv2.VideoCapture(0)
-
-        if not cap.isOpened():
-            st.error("No se pudo abrir la cámara.")
-        else:
-            for _ in range(300):
-                ret, frame = cap.read()
-
-                if not ret:
-                    st.warning("No se pudo capturar frame.")
-                    break
-
-                result = detector.process(frame)
-                vis = draw_keypoints(frame, result["keypoints"])
-
-                cv2.putText(
-                    vis,
-                    f"KP: {result['count']} | Time: {result['time']:.3f}s",
-                    (20, 40),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.8,
-                    (0, 255, 0),
-                    2,
-                )
-
-                FRAME_WINDOW.image(
-                    cv2.cvtColor(vis, cv2.COLOR_BGR2RGB)
-                )
-
-            cap.release()
-            st.success("Cámara finalizada.")
-
-        if cap is not None:
-            cap.release()
+    webrtc_streamer(
+        key="sift-live-demo",
+        video_processor_factory=VideoProcessor,
+        media_stream_constraints={
+            "video": True,
+            "audio": False,
+        },
+        async_processing=True,
+    )
